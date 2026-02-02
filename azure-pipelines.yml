@@ -1,0 +1,460 @@
+# # Sample YAML file to validate and export an ARM template into a build artifact
+# # Requires a package.json file located in the target repository
+
+# trigger:
+# - main #collaboration branch
+
+# pool:
+#   vmImage: 'windows-latest'
+
+# variables:
+
+
+#  factoryName: "Info-dev-adf"
+
+# steps:
+
+# # Installs Node and the npm packages saved in your package.json file in the build
+
+# - task: NodeTool@0
+#   inputs:
+#     versionSpec: '22.x'
+#   displayName: 'Install Node.js'
+
+# - task: Npm@1
+#   inputs:
+#     command: 'install'
+#     workingDir: '$(Build.Repository.LocalPath)' #replace with the package.json folder
+#     verbose: true
+#   displayName: 'Install npm package'
+
+# # Validates all of the Data Factory resources in the repository. You'll get the same validation errors as when "Validate All" is selected.
+# # Enter the appropriate subscription and name for the source factory.
+
+# - task: Npm@1
+#   inputs:
+#     command: 'custom'
+#     workingDir: '$(Build.Repository.LocalPath)' #replace with the package.json folder
+#     customCommand: 'run build validate $(Build.Repository.LocalPath) /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/infromatica_dev-rg/providers/Microsoft.DataFactory/factories/Info-dev-adf'
+#   displayName: 'Validate'
+
+# # Validate and then generate the ARM template into the destination folder, which is the same as selecting "Publish" from the UX.
+# # The ARM template generated isn't published to the live version of the factory. Deployment should be done by using a CI/CD pipeline. 
+
+# - task: Npm@1
+#   inputs:
+#     command: 'custom'
+#     workingDir: '$(Build.Repository.LocalPath)' #replace with the package.json folder
+#     customCommand: 'run build export $(Build.Repository.LocalPath) /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/infromatica_dev-rg/providers/Microsoft.DataFactory/factories/Info-dev-adf "ArmTemplate"'
+#   displayName: 'Validate and Generate ARM template'
+   
+  
+# - task: CopyFiles@2
+#   displayName: 'Copy ARM templates to artifact staging'
+#   inputs:
+#     SourceFolder: '$(Build.Repository.LocalPath)\ArmTemplate'
+#     Contents: '**'
+#     TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  
+# # Publish the artifact to be used as a source for a release pipeline.
+
+# - task: PublishBuildArtifacts@1
+#   inputs:
+#     PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+#     ArtifactName: 'drop'
+#     publishLocation: 'Container'
+
+
+# - task: AzureResourceManagerTemplateDeployment@3
+#   inputs:
+#     deploymentScope: 'Resource Group'
+#     azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
+#     subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
+#     action: 'Create Or Update Resource Group'
+#     resourceGroupName: 'infromatica_dev-rg'
+#     location: 'Central India'
+#     templateLocation: 'Linked artifact'
+#     csmFile: '$(Pipeline.Workspace)/drop/ARMTemplateForFactory.json'
+#     csmParametersFile: '$(Pipeline.Workspace)/drop/ARMTemplateParametersForFactory.json'
+#     # csmFile: 'ArmTemplate/ARMTemplateForFactory.json'
+#     # csmParametersFile: 'ArmTemplate/ARMTemplateParametersForFactory.json'
+#     overrideParameters: '-factoryName $(factoryName )'
+#     deploymentMode: 'Incremental'
+
+
+# ===========================================================================================
+# OPTION -A
+# ============================================================================================
+# trigger:
+# - main # collaboration branch
+trigger:
+  branches:
+    include:
+       - main
+       - feature_itg
+       - develop
+pr: none
+
+pool:
+  vmImage: 'windows-latest'
+
+stages:
+# =========================
+# Stage 1: Build & Publish
+# =========================
+- stage: Build
+  displayName: 'Build & Export ADF ARM'
+  jobs:
+  - job: BuildADF
+    displayName: 'Validate and Export ADF'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    # 1) Node.js
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '22.x'
+      displayName: 'Install Node.js'
+
+    # 2) npm install
+    - task: Npm@1
+      inputs:
+        command: 'install'
+        workingDir: '$(Build.Repository.LocalPath)'
+        verbose: true
+      displayName: 'Install npm packages'
+
+    # 3) Validate ADF
+    - task: Npm@1
+      inputs:
+        command: 'custom'
+        workingDir: '$(Build.Repository.LocalPath)'
+        customCommand: >
+          run build validate
+          $(Build.Repository.LocalPath)
+          /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/infromatica_dev-rg/providers/Microsoft.DataFactory/factories/Info-dev-adf
+      displayName: 'Validate ADF'
+
+    # 4) Export ADF ARM template (generates ArmTemplate folder in repo workspace)
+    - task: Npm@1
+      inputs:
+        command: 'custom'
+        workingDir: '$(Build.Repository.LocalPath)'
+        customCommand: >
+          run build export
+          $(Build.Repository.LocalPath)
+          /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/infromatica_dev-rg/providers/Microsoft.DataFactory/factories/Info-dev-adf
+          "ArmTemplate"
+      displayName: 'Validate and Generate ARM template'
+
+    # (Optional) If you still want to publish artifacts for another stage or release pipeline:
+    - task: CopyFiles@2
+      displayName: 'Copy ARM templates to artifact staging'
+      inputs:
+        SourceFolder: '$(Build.Repository.LocalPath)\ArmTemplate'
+        Contents: '**'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+# ======================
+# Stage 2: Deploy (Dev)
+# ======================
+- stage: Deploy_Dev
+  displayName: 'Deploy to Dev'
+  dependsOn: Build
+  condition: succeeded()   # only run if Build succeeded
+  jobs:
+  - deployment: DeployADFDev
+    displayName: 'Deploy ADF ARM to Dev RG'
+    environment: 'dev'  # optional: ADO environment for approvals/history
+    strategy:
+      runOnce:
+        deploy:
+          # pool:
+          #   vmImage: 'windows-latest'
+          steps:
+          # 1) Download the artifact produced in Stage 1
+          - task: DownloadPipelineArtifact@2 #downloading artifacts created in build stage
+            inputs:
+              source: 'current'
+              path: '$(Pipeline.Workspace)'
+          - powershell: |
+              Write-Host "System.DefaultWorkingDirectory: $(System.DefaultWorkingDirectory)"
+              Get-ChildItem -Recurse -File $(System.DefaultWorkingDirectory)\drop | Select-Object FullName
+            displayName: 'List downloaded files'
+
+          # 2) Diagnostics: list downloaded files
+          - powershell: |
+              Write-Host "System.DefaultWorkingDirectory: $(System.DefaultWorkingDirectory)"
+              Write-Host "Listing 'drop' contents..."
+              Get-ChildItem -Recurse -File "$(System.DefaultWorkingDirectory)\drop" | Select-Object FullName
+            displayName: 'List downloaded files'
+
+          # 3) Deploy using ARM template task
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Deploy ADF ARM from artifact'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
+              subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: 'infromatica_dev-rg'
+              location: 'Central India'
+              templateLocation: 'Linked artifact'
+              csmFile: '$(Pipeline.Workspace)/drop/ARMTemplateForFactory.json'
+              csmParametersFile: '$(Pipeline.Workspace)/drop/ARMTemplateParametersForFactory.json'
+              overrideParameters: '-factoryName Info-dev-adf'
+              deploymentMode: 'Incremental'
+# ======================
+# Stage 2: Deploy (Dev)
+# ======================
+# - stage: Deploy_QA
+#   displayName: 'Deploy to QA'
+#   dependsOn: Deploy_Dev
+#   condition: succeeded()   # only run if Build succeeded
+#   jobs:
+#   - deployment: DeployADFDev
+#     displayName: 'Deploy ADF ARM to Dev RG'
+#     environment: 'QA'  # optional: ADO environment for approvals/history
+#     strategy:
+#       runOnce:
+#         deploy:
+#           # pool:
+#           #   vmImage: 'windows-latest'
+#           steps:
+#           # 1) Download the artifact produced in Stage 1
+#           - task: DownloadPipelineArtifact@2 #downloading artifacts created in build stage
+#             inputs:
+#               source: 'current'
+#               path: '$(Pipeline.Workspace)'
+#           - powershell: |
+#               Write-Host "System.DefaultWorkingDirectory: $(System.DefaultWorkingDirectory)"
+#               Get-ChildItem -Recurse -File $(System.DefaultWorkingDirectory)\drop | Select-Object FullName
+#             displayName: 'List downloaded files'
+
+#           # 2) Diagnostics: list downloaded files
+#           - powershell: |
+#               Write-Host "System.DefaultWorkingDirectory: $(System.DefaultWorkingDirectory)"
+#               Write-Host "Listing 'drop' contents..."
+#               Get-ChildItem -Recurse -File "$(System.DefaultWorkingDirectory)\drop" | Select-Object FullName
+#             displayName: 'List downloaded files'
+
+#           # 3) Deploy using ARM template task
+#           - task: AzureResourceManagerTemplateDeployment@3
+#             displayName: 'Deploy ADF ARM from artifact'
+#             inputs:
+#               deploymentScope: 'Resource Group'
+#               azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
+#               subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
+#               action: 'Create Or Update Resource Group'
+#               resourceGroupName: 'infromatica_dev-rg'
+#               location: 'Central India'
+#               templateLocation: 'Linked artifact'
+#               csmFile: '$(Pipeline.Workspace)/drop/ARMTemplateForFactory.json'
+#               csmParametersFile: '$(Pipeline.Workspace)/drop/ARMTemplateParametersForFactory.json'
+#               overrideParameters: '-factoryName $(factoryName)'
+#               deploymentMode: 'Incremental'
+# ======================
+# Stage 2: Deploy (Dev)
+# ======================
+- stage: feature_itg
+  displayName: 'feature_itg'
+  dependsOn: Deploy_Dev
+  condition: succeeded()   # only run if Build succeeded
+  jobs:
+  - deployment: DeployADFDev
+    displayName: 'Deploy ADF ARM to feature_itg'
+    environment: 'feature_itg'  # optional: ADO environment for approvals/history
+    strategy:
+      runOnce:
+        deploy:
+          # pool:
+          #   vmImage: 'windows-latest'
+          steps:
+          # 1) Download the artifact produced in Stage 1
+          - task: DownloadPipelineArtifact@2 #downloading artifacts created in build stage
+            inputs:
+              source: 'current'
+              path: '$(Pipeline.Workspace)'
+          - powershell: |
+              Write-Host "System.DefaultWorkingDirectory: $(System.DefaultWorkingDirectory)"
+              Get-ChildItem -Recurse -File $(System.DefaultWorkingDirectory)\drop | Select-Object FullName
+            displayName: 'List downloaded files'
+
+          # 2) Diagnostics: list downloaded files
+          - powershell: |
+              Write-Host "System.DefaultWorkingDirectory: $(System.DefaultWorkingDirectory)"
+              Write-Host "Listing 'drop' contents..."
+              Get-ChildItem -Recurse -File "$(System.DefaultWorkingDirectory)\drop" | Select-Object FullName
+            displayName: 'List downloaded files'
+
+          # 3) Deploy using ARM template task
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Deploy ADF ARM from artifact'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
+              subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: 'infromatica_dev-rg'
+              location: 'Central India'
+              templateLocation: 'Linked artifact'
+              csmFile: '$(Pipeline.Workspace)/drop/ARMTemplateForFactory.json'
+              csmParametersFile: '$(Pipeline.Workspace)/drop/ARMTemplateParametersForFactory.json'
+              overrideParameters: '-factoryName itg-adf'
+              deploymentMode: 'Incremental'                            
+# trigger:
+# - main  # collaboration branch
+
+# # You can also choose to trigger on PRs, tags, etc.
+
+# variables:
+#   # Common variables
+#   subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
+#   rgName: 'infromatica_dev-rg'
+#   location: 'Central India'
+#   factoryName: 'Info-dev-adf'  # used in overrideParameters
+#   # ADF ARM export uses full resourceId of the source factory
+#   adfResourceId: '/subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/infromatica_dev-rg/providers/Microsoft.DataFactory/factories/Info-dev-adf'
+
+# stages:
+# # =========================
+# # Stage 1: Build & Publish
+# # =========================
+# - stage: Build
+#   displayName: 'Build & Export ADF ARM'
+#   jobs:
+#   - job: BuildADF
+#     displayName: 'Validate and Export ADF'
+#     pool:
+#       vmImage: 'windows-latest'
+#     steps:
+#     # 1) Node.js
+#     - task: NodeTool@0
+#       displayName: 'Install Node.js'
+#       inputs:
+#         versionSpec: '22.x'
+
+#     # 2) npm install
+#     - task: Npm@1
+#       displayName: 'Install npm packages'
+#       inputs:
+#         command: 'install'
+#         workingDir: '$(Build.Repository.LocalPath)'
+#         verbose: true
+
+#     # 3) Validate ADF (same as Validate All)
+#     - task: Npm@1
+#       displayName: 'Validate ADF'
+#       inputs:
+#         command: 'custom'
+#         workingDir: '$(Build.Repository.LocalPath)'
+#         customCommand: >
+#           run build validate
+#           $(Build.Repository.LocalPath)
+#           $(adfResourceId)
+
+#     # 4) Export ADF ARM template (generates ArmTemplate folder)
+#     - task: Npm@1
+#       displayName: 'Validate and Generate ARM template'
+#       inputs:
+#         command: 'custom'
+#         workingDir: '$(Build.Repository.LocalPath)'
+#         customCommand: >
+#           run build export
+#           $(Build.Repository.LocalPath)
+#           $(adfResourceId)
+#           "ArmTemplate"
+
+#     # 5) (Optional) Diagnostics: confirm what was generated
+#     - powershell: |
+#         Write-Host "Repo path: $(Build.Repository.LocalPath)"
+#         if (Test-Path "$(Build.Repository.LocalPath)\ArmTemplate") {
+#           Write-Host "ArmTemplate folder contents:"
+#           Get-ChildItem -Recurse -File "$(Build.Repository.LocalPath)\ArmTemplate" | Select-Object FullName
+#         } else {
+#           Write-Error "ArmTemplate folder not found. Export likely failed."
+#         }
+#       displayName: 'List generated templates (diagnostics)'
+
+#     # 6) Copy to artifact staging
+#     - task: CopyFiles@2
+#       displayName: 'Copy ARM templates to artifact staging'
+#       inputs:
+#         SourceFolder: '$(Build.Repository.LocalPath)\ArmTemplate'
+#         Contents: '**'
+#         TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+#     # 7) Publish artifact for downstream stages
+#     - task: PublishBuildArtifacts@1
+#       displayName: 'Publish artifact: drop'
+#       inputs:
+#         PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+#         ArtifactName: 'drop'
+#         publishLocation: 'Container'
+
+# # ======================
+# # Stage 2: Deploy (Dev)
+# # ======================
+# - stage: Deploy_Dev
+#   displayName: 'Deploy to Dev'
+#   dependsOn: Build
+#   condition: succeeded()   # only run if Build succeeded
+#   jobs:
+#   - deployment: DeployADFDev
+#     displayName: 'Deploy ADF ARM to Dev RG'
+#     environment: 'dev'  # optional: ADO environment for approvals/history
+#     strategy:
+#       runOnce:
+#         deploy:
+#           pool:
+#             vmImage: 'windows-latest'
+#           steps:
+#           # 1) Download the artifact produced in Stage 1
+#           - download: current
+#             artifact: drop
+#             displayName: 'Download build artifact: drop'
+
+#           # 2) Diagnostics: list downloaded files
+#           - powershell: |
+#               Write-Host "System.DefaultWorkingDirectory: $(System.DefaultWorkingDirectory)"
+#               Write-Host "Listing 'drop' contents..."
+#               Get-ChildItem -Recurse -File "$(System.DefaultWorkingDirectory)\drop" | Select-Object FullName
+#             displayName: 'List downloaded files'
+
+          # 3) Deploy using ARM template task
+          # - task: AzureResourceManagerTemplateDeployment@3
+          #   displayName: 'Deploy ADF ARM from artifact'
+          #   inputs:
+          #     deploymentScope: 'Resource Group'
+          #     # IMPORTANT: change to your actual service connection display name
+          #     azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
+          #     subscriptionId: '$(subscriptionId)'
+          #     action: 'Create Or Update Resource Group'
+          #     resourceGroupName: '$(rgName)'
+          #     location: '$(location)'
+          #     templateLocation: 'Linked artifact'
+          #     # After download, files are under $(System.DefaultWorkingDirectory)\drop\...
+          #     csmFile: 'drop/ARMTemplateForFactory.json'
+          #     csmParametersFile: 'drop/ARMTemplateParametersForFactory.json'
+          #     overrideParameters: '-factoryName $(factoryName)'
+          #     deploymentMode: 'Incremental'
+          # # Deploy from the downloaded artifact
+          # - task: AzureResourceManagerTemplateDeployment@3
+          #   displayName: 'Deploy ADF ARM from artifact'
+          #   inputs:
+          #     deploymentScope: 'Resource Group'
+          #     azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
+          #     subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
+          #     action: 'Create Or Update Resource Group'
+          #     resourceGroupName: 'infromatica_dev-rg'
+          #     location: 'Central India'
+          #     templateLocation: 'Linked artifact'
+          #     csmFile: 'drop/ARMTemplateForFactory.json'
+          #     csmParametersFile: 'drop/ARMTemplateParametersForFactory.json'
+          #     overrideParameters: '-factoryName $(factoryName)'
+          #     deploymentMode: 'Incremental'    
