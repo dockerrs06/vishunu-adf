@@ -1,3 +1,4 @@
+
 # # Sample YAML file to validate and export an ARM template into a build artifact
 # # Requires a package.json file located in the target repository
 
@@ -94,7 +95,6 @@ trigger:
        - feature_itg
        - develop
 pr: none
-
 pool:
   vmImage: 'windows-latest'
 
