@@ -95,7 +95,6 @@ trigger:
        - feature_itg
        - develop
 pr: none
-
 pool:
   vmImage: 'windows-latest'
 
