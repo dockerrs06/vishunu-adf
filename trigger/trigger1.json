@@ -3,13 +3,20 @@
 	"properties": {
 		"annotations": [],
 		"runtimeState": "Started",
-		"pipelines": [],
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "sundarrajan",
+					"type": "PipelineReference"
+				}
+			}
+		],
 		"type": "ScheduleTrigger",
 		"typeProperties": {
 			"recurrence": {
 				"frequency": "Minute",
 				"interval": 2,
-				"startTime": "2026-02-02T03:50:00",
+				"startTime": "2026-02-02T03:54:00",
 				"timeZone": "India Standard Time"
 			}
 		}
