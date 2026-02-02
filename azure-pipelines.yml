@@ -132,7 +132,7 @@ stages:
         customCommand: >
           run build validate
           $(Build.Repository.LocalPath)
-          /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/infromatica_dev-rg/providers/Microsoft.DataFactory/factories/Info-dev-adf
+          /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/informatica-rg/providers/Microsoft.DataFactory/factories/dev-adfsundar
       displayName: 'Validate ADF'
 
     # 4) Export ADF ARM template (generates ArmTemplate folder in repo workspace)
@@ -143,7 +143,7 @@ stages:
         customCommand: >
           run build export
           $(Build.Repository.LocalPath)
-          /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/infromatica_dev-rg/providers/Microsoft.DataFactory/factories/Info-dev-adf
+          /subscriptions/e3d41855-059e-4340-b9ba-28d873e8605b/resourceGroups/informatica-rg/providers/Microsoft.DataFactory/factories/dev-adfsundar
           "ArmTemplate"
       displayName: 'Validate and Generate ARM template'
 
@@ -202,12 +202,12 @@ stages:
               azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
               subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
               action: 'Create Or Update Resource Group'
-              resourceGroupName: 'infromatica_dev-rg'
+              resourceGroupName: 'informatica-rg'
               location: 'Central India'
               templateLocation: 'Linked artifact'
               csmFile: '$(Pipeline.Workspace)/drop/ARMTemplateForFactory.json'
               csmParametersFile: '$(Pipeline.Workspace)/drop/ARMTemplateParametersForFactory.json'
-              overrideParameters: '-factoryName Info-dev-adf'
+              overrideParameters: '-factoryName dev-adfsundar'
               deploymentMode: 'Incremental'
 # ======================
 # Stage 2: Deploy (Dev)
@@ -300,12 +300,12 @@ stages:
               azureResourceManagerConnection: 'DEV-SUB (e3d41855-059e-4340-b9ba-28d873e8605b)'
               subscriptionId: 'e3d41855-059e-4340-b9ba-28d873e8605b'
               action: 'Create Or Update Resource Group'
-              resourceGroupName: 'infromatica_dev-rg'
+              resourceGroupName: 'informatica-rg'
               location: 'Central India'
               templateLocation: 'Linked artifact'
               csmFile: '$(Pipeline.Workspace)/drop/ARMTemplateForFactory.json'
               csmParametersFile: '$(Pipeline.Workspace)/drop/ARMTemplateParametersForFactory.json'
-              overrideParameters: '-factoryName itg-adf'
+              overrideParameters: '-factoryName feature-itg'
               deploymentMode: 'Incremental'                            
 # trigger:
 # - main  # collaboration branch
